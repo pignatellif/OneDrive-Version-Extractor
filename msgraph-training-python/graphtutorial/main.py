@@ -40,13 +40,31 @@ async def main():
             elif choice == 1:
                 await display_list_files(graph, token)
             elif choice == 2:
-                file_id = input('Enter the file ID: ')
-                await display_file_versions(graph, token, file_id)
+                file_id = input('Enter the file ID (cancel for exit): ')
+                if file_id == "cancel":
+                    continue
+                else:
+                    await display_file_versions(graph, token, file_id)
             elif choice == 3:
-                file_id = input('Enter the file ID: ')
-                version_id = input('Enter the version ID: ')
-                save_path = input('Enter the full file path to save (including filename): ')
-                await download_file_version(token, file_id, version_id, save_path)
+                file_id = input('Enter the file ID (cancel for exit): ')
+                if file_id == "cancel":
+                    continue
+                else:
+                    choice_2 = "temp"
+                    while choice_2 != "cancel":
+                        choice_2 = input('Do you want to download all versions? (yes/no/cancel for exit): ')
+                        if choice_2 == "no":
+                            version_id = input('Enter the version ID (cancel for exit): ')
+                            if version_id == "cancel":
+                                continue
+                            else:
+                                save_path = input('Enter the full file path to save (including filename and extension): ')
+                                await download_file_version(token, file_id, version_id, save_path)
+                        elif choice_2 == "yes":
+                            #Codice per scaricare tutte le versioni.
+                            continue
+                        else:
+                            continue
             else:
                 print('Invalid choice!\n')
         except ODataError as odata_error:
@@ -61,81 +79,96 @@ async def greet_user(graph: Graph):
         print('Hello,', user.display_name)
         print('Email:', user.mail or user.user_principal_name, '\n')
 
-# Helper function to get drive items
-async def get_drive_items(token, folder_id=None):
+# Helper function to print items in a hierarchical format
+async def print_items(token, items, level=0):
     headers = {
         'Authorization': f'Bearer {token}'
     }
 
-    if folder_id:
-        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}/children'
-    else:
-        url = 'https://graph.microsoft.com/v1.0/me/drive/root/children'
-
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    return response.json()
-
-# Helper function to print items in a hierarchical format
-async def print_items(token, items, level=0):
     for item in items['value']:
         print(' ' * level * 4 + '- ' + f"[{item['id']}] {item['name']}")
         if 'folder' in item:
-            sub_items = await get_drive_items(token, item['id'])
+            url = f'https://graph.microsoft.com/v1.0/me/drive/items/{item["id"]}/children'
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            sub_items = response.json()
             await print_items(token, sub_items, level + 1)
 
 # Display list files
 async def display_list_files(graph: Graph, token):
-    root_items = await get_drive_items(token)
-    await print_items(token, root_items)
-
-# Helper function to get file versions
-async def get_file_versions(token, file_id):
+    
     headers = {
         'Authorization': f'Bearer {token}'
     }
-    url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions'
 
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.get('https://graph.microsoft.com/v1.0/me/drive/root/children', headers=headers)
+        response.raise_for_status()  # Verifica se la richiesta ha avuto successo o solleva un'eccezione
+        root_items = response.json()
 
-# Helper function to print file versions
-async def print_file_versions(versions):
-    for version in versions['value']:
-        print(f"Version ID: {version['id']}")
-        print(f"Last Modified: {version['lastModifiedDateTime']}")
-        print(f"Size: {version['size']} bytes\n")
+        await print_items(token, root_items)
 
-# Display file versions
+    except requests.exceptions.HTTPError as err:
+        print(f'Errore HTTP: {err}')  # Gestione dell'errore HTTP
+
+    except requests.exceptions.RequestException as err:
+        print(f'Errore di richiesta: {err}')  # Gestione di altri tipi di eccezioni di richiesta
+
 async def display_file_versions(graph: Graph, token, file_id):
-    versions = await get_file_versions(token, file_id)
-    await print_file_versions(versions)
+    try:
+        headers = {
+            'Authorization': f'Bearer {token}'
+        }
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions'
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        versions = response.json()
+
+        for version in versions['value']:
+            print(f"Version ID: {version['id']}")
+            print(f"Last Modified: {version['lastModifiedDateTime']}")
+            print(f"Size: {version['size']} bytes\n")
+    
+    except requests.exceptions.HTTPError as e:
+        print(f"Make sure you have entered a valid File ID {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 # Helper function to download the file version
 async def download_file_version(token, file_id, version_id, save_path):
-    headers = {
-        'Authorization': f'Bearer {token}'
-    }
-    url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
+    try:
+        headers = {
+            'Authorization': f'Bearer {token}'
+        }
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
 
-    response = requests.get(url, headers=headers, allow_redirects=False)
-    response.raise_for_status()
+        response = requests.get(url, headers=headers, allow_redirects=False)
+        response.raise_for_status()
 
-    # The actual download URL is in the 'Location' header
-    download_url = response.headers['Location']
+        # The actual download URL is in the 'Location' header
+        download_url = response.headers.get('Location')
+        if not download_url:
+            raise ValueError("Download URL not found")
+
+        response = requests.get(download_url)
+        response.raise_for_status()
+
+        # Create directory if it does not exist
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+
+        with open(save_path, 'wb') as file:
+            file.write(response.content)
+
+        print(f"File version downloaded successfully as {save_path}")
     
-    response = requests.get(download_url)
-    response.raise_for_status()
-    
-    # Create directory if it does not exist
-    if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
-    
-    with open(save_path, 'wb') as file:
-        file.write(response.content)
-    
-    print(f"File version downloaded successfully as {save_path}")
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error occurred: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception occurred: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 # Run main
 asyncio.run(main())
