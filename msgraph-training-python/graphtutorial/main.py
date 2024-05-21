@@ -138,6 +138,10 @@ async def display_file_versions(graph: Graph, token, file_id):
 # Helper function to download the file version
 async def download_file_version(token, file_id, version_id, save_path):
     try:
+        # Check if save_path has an extension
+        if not os.path.splitext(save_path)[1]:
+            raise ValueError("File extension is missing in the save path")
+
         headers = {
             'Authorization': f'Bearer {token}'
         }
@@ -167,6 +171,8 @@ async def download_file_version(token, file_id, version_id, save_path):
         print(f"HTTP Error occurred: {e}")
     except requests.exceptions.RequestException as e:
         print(f"Request Exception occurred: {e}")
+    except ValueError as e:
+        print(f"Value Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
