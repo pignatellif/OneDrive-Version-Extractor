@@ -28,6 +28,7 @@ async def main():
         print('1. Display list files')
         print('2. Display file versions')
         print('3. Download a file version')
+        print('4. Updates on OneDrive')
 
         try:
             choice = int(input())
@@ -65,6 +66,8 @@ async def main():
                             continue
                         else:
                             continue
+            elif choice == 4:
+                await monitor_onedrive_activities(token)
             else:
                 print('Invalid choice!\n')
         except ODataError as odata_error:
@@ -175,6 +178,45 @@ async def download_file_version(token, file_id, version_id, save_path):
         print(f"Value Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
+# Funzione asincrona per monitorare le attività su OneDrive
+async def monitor_onedrive_activities(token):
+    url_delta = 'https://graph.microsoft.com/v1.0/me/drive/root/delta'
+    url_recycle_bin = 'https://graph.microsoft.com/v1.0/me/drive/root/recycleBin'
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+
+    # Monitorare le modifiche su OneDrive
+    response_delta = requests.get(url_delta, headers=headers)
+    response_delta.raise_for_status()
+    changes = response_delta.json()
+   
+    print("Changes in OneDrive:")
+    print("=" * 90)
+    print("| {:<30} | {:<40} | {:<20} |".format("Filename", "File ID", "Modified Time"))
+    print("-" * 90)
+    
+    for item in changes.get('value', []):
+        filename = item.get('name', 'N/A')
+        file_id = item.get('id', 'N/A')
+        modified_time = item.get('lastModifiedDateTime', 'N/A')
+        print("| {:<30} | {:<40} | {:<20} |".format(filename[:30], file_id[:40], modified_time[:20]))
+    
+    print("=" * 90)
+
+    try:
+        response_recycle_bin = requests.get(url_recycle_bin, headers=headers)
+        response_recycle_bin.raise_for_status()
+        recycle_bin_items = response_recycle_bin.json()
+        print("Cestino: \n")
+        for item in recycle_bin_items.get('value', []):
+            deleted_time = item.get('deletedDateTime', 'N/A')
+            print(f" - Filename: {item['name']} (ID: {item['id']}), Deleted: {deleted_time}")
+    except requests.exceptions.HTTPError as err:
+        print(f"Error retrieving recycle bin items: {err}")
+
 
 # Run main
 asyncio.run(main())
