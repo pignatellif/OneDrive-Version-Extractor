@@ -29,6 +29,7 @@ async def main():
         print('2. Display file versions')
         print('3. Download a file version')
         print('4. Updates on OneDrive')
+        print('5. Restore a version')
 
         try:
             choice = int(input())
@@ -41,26 +42,27 @@ async def main():
             elif choice == 1:
                 await display_list_files(graph, token)
             elif choice == 2:
-                file_id = input('Enter the file ID (cancel for exit): ')
+                file_id = input('Enter the file ID of the file you want to see the versions (type cancel for exit): ')
                 if file_id == "cancel":
                     continue
                 else:
                     await display_file_versions(graph, token, file_id)
             elif choice == 3:
-                file_id = input('Enter the file ID (cancel for exit): ')
+                file_id = input('Enter the file ID of the file you want to download (type cancel for exit): ')
                 if file_id == "cancel":
                     continue
                 else:
                     choice_2 = "temp"
                     while choice_2 != "cancel":
-                        choice_2 = input('Do you want to download all versions? (yes/no/cancel for exit): ')
+                        choice_2 = input('Do you want to download all the versions of the file? (yes/no/cancel for exit): ')
                         if choice_2 == "no":
-                            version_id = input('Enter the version ID (cancel for exit): ')
+                            version_id = input('Enter the version ID of the file you want to download (type cancel for exit): ')
                             if version_id == "cancel":
                                 continue
                             else:
-                                save_path = input('Enter the full file path to save (including filename and extension): ')
-                                await download_file_version(token, file_id, version_id, save_path)
+                                save_directory = input('Enter the directory path to save the file: ')
+                                file_name = input('Enter the file name with extension: ')
+                                await download_file_version(token, file_id, version_id, save_directory, file_name)
                         elif choice_2 == "yes":
                             #Codice per scaricare tutte le versioni.
                             continue
@@ -68,6 +70,16 @@ async def main():
                             continue
             elif choice == 4:
                 await monitor_onedrive_activities(token)
+            elif choice == 5:
+                file_id = input('Enter the file ID (type cancel for exit): ')
+                if file_id == "cancel":
+                    continue
+                else:
+                    version_id = input('Enter the version ID of the file you wnat to restore (type cancel for exit): ')
+                    if version_id == "cancel":
+                        continue
+                    else:
+                        await restore_file_version(graph, token, file_id, version_id)
             else:
                 print('Invalid choice!\n')
         except ODataError as odata_error:
@@ -139,11 +151,14 @@ async def display_file_versions(graph: Graph, token, file_id):
         print(f"An unexpected error occurred: {e}")
 
 # Helper function to download the file version
-async def download_file_version(token, file_id, version_id, save_path):
+async def download_file_version(token, file_id, version_id, save_directory, file_name):
     try:
-        # Check if save_path has an extension
-        if not os.path.splitext(save_path)[1]:
-            raise ValueError("File extension is missing in the save path")
+        # Check if file_name has an extension
+        if not os.path.splitext(file_name)[1]:
+            raise ValueError("File extension is missing in the file name")
+
+        # Combine save_directory and file_name to get the full save path
+        save_path = os.path.join(save_directory, file_name)
 
         headers = {
             'Authorization': f'Bearer {token}'
@@ -217,6 +232,25 @@ async def monitor_onedrive_activities(token):
     except requests.exceptions.HTTPError as err:
         print(f"Error retrieving recycle bin items: {err}")
 
+async def restore_file_version(graph: Graph, token, file_id, version_id):
+    try:
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/restoreVersion'
+
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+
+        print(f"Version {version_id} of file {file_id} restored successfully.")
+    
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error occurred: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception occurred: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 # Run main
 asyncio.run(main())
