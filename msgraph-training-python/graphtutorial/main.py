@@ -64,7 +64,8 @@ async def main():
                                 file_name = input('Enter the file name with extension: ')
                                 await download_file_version(token, file_id, version_id, save_directory, file_name)
                         elif choice_2 == "yes":
-                            #Codice per scaricare tutte le versioni.
+                            save_directory = input('Enter the directory path to save the file: ')
+                            await download_all_file_versions(token, file_id, save_directory)
                             continue
                         else:
                             continue
@@ -184,6 +185,49 @@ async def download_file_version(token, file_id, version_id, save_directory, file
             file.write(response.content)
 
         print(f"File version downloaded successfully as {save_path}")
+    
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error occurred: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception occurred: {e}")
+    except ValueError as e:
+        print(f"Value Error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+async def download_all_file_versions(token, file_id, save_directory):
+    try:
+        headers = {
+            'Authorization': f'Bearer {token}'
+        }
+        url_versions = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions'
+
+        response_versions = requests.get(url_versions, headers=headers)
+        response_versions.raise_for_status()
+        versions = response_versions.json()
+
+        if not versions['value']:
+            print("No versions found for this file.")
+            return
+
+        # Get the original file name and extension
+        url_item = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
+        response_item = requests.get(url_item, headers=headers)
+        response_item.raise_for_status()
+        item = response_item.json()
+        original_name = item['name']
+        original_extension = os.path.splitext(original_name)[1]
+
+        # Create directory if it does not exist
+        if not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+
+        for version in versions['value']:
+            version_id = version['id']
+            file_name = f"{os.path.splitext(original_name)[0]}_{version_id}{original_extension}"
+
+            # Call download_file_version for each version
+            await download_file_version(token, file_id, version_id, save_directory, file_name)
     
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error occurred: {e}")
