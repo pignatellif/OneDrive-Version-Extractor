@@ -151,35 +151,21 @@ async def display_file_versions(graph: Graph, token, file_id):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-# Helper function to download the file version
 async def download_file_version(token, file_id, version_id, save_directory, file_name):
     try:
-        # Check if file_name has an extension
-        if not os.path.splitext(file_name)[1]:
-            raise ValueError("File extension is missing in the file name")
-
-        # Combine save_directory and file_name to get the full save path
-        save_path = os.path.join(save_directory, file_name)
-
         headers = {
             'Authorization': f'Bearer {token}'
         }
-        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content'
 
         response = requests.get(url, headers=headers, allow_redirects=False)
         response.raise_for_status()
 
-        # The actual download URL is in the 'Location' header
-        download_url = response.headers.get('Location')
-        if not download_url:
-            raise ValueError("Download URL not found")
-
-        response = requests.get(download_url)
-        response.raise_for_status()
-
         # Create directory if it does not exist
-        if not os.path.exists(os.path.dirname(save_path)):
-            os.makedirs(os.path.dirname(save_path))
+        if save_directory and not os.path.exists(save_directory):
+            os.makedirs(save_directory)
+
+        save_path = os.path.join(save_directory, file_name)
 
         with open(save_path, 'wb') as file:
             file.write(response.content)
@@ -190,10 +176,9 @@ async def download_file_version(token, file_id, version_id, save_directory, file
         print(f"HTTP Error occurred: {e}")
     except requests.exceptions.RequestException as e:
         print(f"Request Exception occurred: {e}")
-    except ValueError as e:
-        print(f"Value Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
+
 
 async def download_all_file_versions(token, file_id, save_directory):
     try:
