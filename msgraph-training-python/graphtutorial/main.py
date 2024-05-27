@@ -37,52 +37,71 @@ async def main():
             choice = -1
 
         try:
-            if choice == 0:
-                print('Goodbye...')
-            elif choice == 1:
-                await display_list_files(graph, token)
-            elif choice == 2:
-                file_id = input('Enter the file ID of the file you want to see the versions (type cancel for exit): ')
-                if file_id == "cancel":
-                    continue
-                else:
-                    await display_file_versions(graph, token, file_id)
-            elif choice == 3:
-                file_id = input('Enter the file ID of the file you want to download (type cancel for exit): ')
-                if file_id == "cancel":
-                    continue
-                else:
-                    choice_2 = "temp"
-                    while choice_2 != "cancel":
-                        choice_2 = input('Do you want to download all the versions of the file? (yes/no/cancel for exit): ')
-                        if choice_2 == "no":
-                            version_id = input('Enter the version ID of the file you want to download (type cancel for exit): ')
+            match choice:
+                case 0:
+                    #Exit
+                    print('Goodbye...')
+                case 1:
+                    #Display list files
+                    await display_list_files(graph, token)
+                case 2:
+                    #Display file versions
+                    file_id = input('Enter the file ID of the file you want to see the versions (type cancel for exit): ')
+                    if file_id == "cancel":
+                        continue
+                    else:
+                        await display_file_versions(graph, token, file_id)
+                case 3:
+                    #Download a file version
+                    file_id = input('Enter the file ID of the file you want to download (type cancel for exit): ')
+                    if file_id == "cancel":
+                        continue
+                    else:
+                        if not await validate_file_id(token, file_id):
+                            print("Invalid file ID. Please try again.")
+                        else:
+                            choice_2 = input('Do you want to download all the versions of the file? (yes/no/cancel for exit): ')
+                            match choice_2:
+                                case "no":
+                                    version_id = input('Enter the version ID of the file you want to download (type cancel for exit): ')
+                                    if version_id == "cancel":
+                                        continue
+                                    else:
+                                        if not await validate_version_id(token, file_id, version_id):
+                                            print("Invalid version ID. Please try again.")
+                                        else:
+                                            save_directory = input('Enter the directory path to save the file: ')
+                                            file_name = input('Enter the file name with extension: ')
+                                            await download_file_version(token, file_id, version_id, save_directory, file_name)
+                                case "yes":
+                                    save_directory = input('Enter the directory path to save the file: ')
+                                    await download_all_file_versions(token, file_id, save_directory)
+                                case "cancel":
+                                    continue
+                                case _:
+                                    print('Invalid choice!\n')
+                case 4:
+                    #Updates on OneDrive
+                    await monitor_onedrive_activities(token)
+                case 5:
+                    #Restore a version
+                    file_id = input('Enter the file ID (type cancel for exit): ')
+                    if file_id == "cancel":
+                        continue
+                    else:
+                        if not await validate_file_id(token, file_id):
+                            print("Invalid file ID. Please try again.")
+                        else:
+                            version_id = input('Enter the version ID of the file you wnat to restore (type cancel for exit): ')
                             if version_id == "cancel":
                                 continue
                             else:
-                                save_directory = input('Enter the directory path to save the file: ')
-                                file_name = input('Enter the file name with extension: ')
-                                await download_file_version(token, file_id, version_id, save_directory, file_name)
-                        elif choice_2 == "yes":
-                            save_directory = input('Enter the directory path to save the file: ')
-                            await download_all_file_versions(token, file_id, save_directory)
-                            continue
-                        else:
-                            continue
-            elif choice == 4:
-                await monitor_onedrive_activities(token)
-            elif choice == 5:
-                file_id = input('Enter the file ID (type cancel for exit): ')
-                if file_id == "cancel":
-                    continue
-                else:
-                    version_id = input('Enter the version ID of the file you wnat to restore (type cancel for exit): ')
-                    if version_id == "cancel":
-                        continue
-                    else:
-                        await restore_file_version(graph, token, file_id, version_id)
-            else:
-                print('Invalid choice!\n')
+                                if not await validate_version_id(token, file_id, version_id):
+                                            print("Invalid version ID. Please try again.")
+                                else:
+                                    await restore_file_version(graph, token, file_id, version_id)
+                case _:
+                    print('Invalid choice!\n')
         except ODataError as odata_error:
             print('Error:')
             if odata_error.error:
@@ -129,6 +148,24 @@ async def display_list_files(graph: Graph, token):
 
     except requests.exceptions.RequestException as err:
         print(f'Errore di richiesta: {err}')  # Gestione di altri tipi di eccezioni di richiesta
+
+async def validate_file_id(token, file_id):
+    url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    response = requests.get(url, headers=headers)
+    return response.status_code == 200
+
+async def validate_version_id(token, file_id, version_id):
+    url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}'
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    response = requests.get(url, headers=headers)
+    return response.status_code == 200
 
 async def display_file_versions(graph: Graph, token, file_id):
     try:
@@ -226,40 +263,36 @@ async def download_all_file_versions(token, file_id, save_directory):
 # Funzione asincrona per monitorare le attività su OneDrive
 async def monitor_onedrive_activities(token):
     url_delta = 'https://graph.microsoft.com/v1.0/me/drive/root/delta'
-    url_recycle_bin = 'https://graph.microsoft.com/v1.0/me/drive/root/recycleBin'
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
 
-    # Monitorare le modifiche su OneDrive
-    response_delta = requests.get(url_delta, headers=headers)
-    response_delta.raise_for_status()
-    changes = response_delta.json()
-   
-    print("Changes in OneDrive:")
-    print("=" * 90)
-    print("| {:<30} | {:<40} | {:<20} |".format("Filename", "File ID", "Modified Time"))
-    print("-" * 90)
-    
-    for item in changes.get('value', []):
-        filename = item.get('name', 'N/A')
-        file_id = item.get('id', 'N/A')
-        modified_time = item.get('lastModifiedDateTime', 'N/A')
-        print("| {:<30} | {:<40} | {:<20} |".format(filename[:30], file_id[:40], modified_time[:20]))
-    
-    print("=" * 90)
-
     try:
-        response_recycle_bin = requests.get(url_recycle_bin, headers=headers)
-        response_recycle_bin.raise_for_status()
-        recycle_bin_items = response_recycle_bin.json()
-        print("Cestino: \n")
-        for item in recycle_bin_items.get('value', []):
-            deleted_time = item.get('deletedDateTime', 'N/A')
-            print(f" - Filename: {item['name']} (ID: {item['id']}), Deleted: {deleted_time}")
+        # Monitorare le modifiche su OneDrive
+        response_delta = requests.get(url_delta, headers=headers)
+        response_delta.raise_for_status()
+        changes = response_delta.json()
+
+        print("Changes in OneDrive:")
+        print("=" * 140)
+        print("| {:<30} | {:<40} | {:<20} | {:<20} | {:<20} |".format("Filename", "File ID", "Action", "Modified By", "Modified Time"))
+        print("-" * 140)
+
+        for item in changes.get('value', []):
+            filename = item.get('name', 'N/A')
+            file_id = item.get('id', 'N/A')
+            modified_time = item.get('lastModifiedDateTime', 'N/A')
+            modified_by = item.get('lastModifiedBy', {}).get('user', {}).get('displayName', 'N/A')
+            action = 'Deleted' if 'deleted' in item else 'Modified'
+            print("| {:<30} | {:<40} | {:<20} | {:<20} | {:<20} |".format(filename[:30], file_id[:40], action, modified_by[:20], modified_time[:20]))
+
+        print("=" * 140)
+
     except requests.exceptions.HTTPError as err:
-        print(f"Error retrieving recycle bin items: {err}")
+        print(f"HTTP error occurred: {err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
 
 async def restore_file_version(graph: Graph, token, file_id, version_id):
     try:
