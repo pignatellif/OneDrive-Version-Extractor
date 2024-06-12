@@ -193,9 +193,9 @@ async def download_file_version(token, file_id, version_id, save_directory, file
         headers = {
             'Authorization': f'Bearer {token}'
         }
-        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content'
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
 
-        response = requests.get(url, headers=headers, allow_redirects=False)
+        response = requests.get(url, headers=headers, allow_redirects=True)
         response.raise_for_status()
 
         # Create directory if it does not exist
@@ -215,7 +215,6 @@ async def download_file_version(token, file_id, version_id, save_directory, file
         print(f"Request Exception occurred: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-
 
 async def download_all_file_versions(token, file_id, save_directory):
     try:
@@ -247,10 +246,8 @@ async def download_all_file_versions(token, file_id, save_directory):
         for version in versions['value']:
             version_id = version['id']
             file_name = f"{os.path.splitext(original_name)[0]}_{version_id}{original_extension}"
-
-            # Call download_file_version for each version
             await download_file_version(token, file_id, version_id, save_directory, file_name)
-    
+
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error occurred: {e}")
     except requests.exceptions.RequestException as e:
