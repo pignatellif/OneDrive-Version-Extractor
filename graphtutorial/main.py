@@ -4,6 +4,10 @@ import configparser
 import os
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph import Graph
+from datetime import datetime
+from pytz import timezone
+import pytz
+import csv
 
 async def main():
     print('OneDrive-Version-Extractor\n')
@@ -178,11 +182,59 @@ async def display_file_versions(graph: Graph, token, file_id):
         response.raise_for_status()
         versions = response.json()
 
+        # Print file versions information to console
         for version in versions['value']:
+            # Convert lastModifiedDateTime to datetime object in UTC
+            modified_time_str = version.get('lastModifiedDateTime', 'N/A')
+            modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Convert to datetime object
+
+            # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
+            tz = timezone('Europe/Rome')
+            modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
+
+            modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
+
+            # Print version information
             print(f"Version ID: {version['id']}")
-            print(f"Last Modified: {version['lastModifiedDateTime']}")
+            print(f"Last Modified: {modified_time_str_with_tz}")
             print(f"Size: {version['size']} bytes\n")
-    
+
+        # Ask user if they want to export to CSV
+        export_csv = input('Do you want to export the versions to a CSV file? (yes/no): ')
+        if export_csv.lower() == 'yes':
+            csv_filename = f"{file_id}_versions.csv"
+            directory = input('Enter the directory path to save the CSV file: ')
+
+            # Create directory if it does not exist
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            csv_path = os.path.join(directory, csv_filename)
+
+            with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
+                writer = csv.writer(csv_file)
+                writer.writerow(['Version ID', 'Last Modified', 'Size'])
+
+                for version in versions['value']:
+                    # Convert lastModifiedDateTime to datetime object in UTC
+                    modified_time_str = version.get('lastModifiedDateTime', 'N/A')
+                    modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Convert to datetime object
+
+                    # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
+                    tz = timezone('Europe/Rome')
+                    modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
+
+                    modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
+
+                    # Write version information to CSV
+                    writer.writerow([version['id'], modified_time_str_with_tz, version['size']])
+
+            print(f"File {csv_path} containing versions metadata exported successfully.")
+        elif export_csv.lower() == 'no':
+            print("Not exporting to CSV.")
+        else:
+            print("Invalid choice. Not exporting to CSV.")
+
     except requests.exceptions.HTTPError as e:
         print(f"Make sure you have entered a valid File ID {e}")
     except Exception as e:
@@ -272,19 +324,27 @@ async def monitor_onedrive_activities(token):
         changes = response_delta.json()
 
         print("Changes in OneDrive:")
-        print("=" * 140)
-        print("| {:<30} | {:<40} | {:<20} | {:<20} | {:<20} |".format("Filename", "File ID", "Action", "Modified By", "Modified Time"))
-        print("-" * 140)
+        print("=" * 171)
+        print("| {:<40} | {:<40} | {:<20} | {:<25} | {:<30} |".format("Filename", "File ID", "Action", "Modified By", "Modified Time"))
+        print("-" * 171)
 
         for item in changes.get('value', []):
             filename = item.get('name', 'N/A')
             file_id = item.get('id', 'N/A')
-            modified_time = item.get('lastModifiedDateTime', 'N/A')
+            modified_time_str = item.get('lastModifiedDateTime', 'N/A')
+            modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Converti in oggetto datetime
+
+            # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
+            tz = timezone('Europe/Rome')
+            modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
+
+            modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
+
             modified_by = item.get('lastModifiedBy', {}).get('user', {}).get('displayName', 'N/A')
             action = 'Deleted' if 'deleted' in item else 'Modified'
-            print("| {:<30} | {:<40} | {:<20} | {:<20} | {:<20} |".format(filename[:30], file_id[:40], action, modified_by[:20], modified_time[:20]))
+            print("| {:<40} | {:<40} | {:<20} | {:<25} | {:<30} |".format(filename[:40], file_id[:40], action, modified_by[:25], modified_time_str_with_tz))
 
-        print("=" * 140)
+        print("=" * 171)
 
     except requests.exceptions.HTTPError as err:
         print(f"HTTP error occurred: {err}")
