@@ -3,71 +3,70 @@ import requests
 import configparser
 import os
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
-from graph import Graph
+from graph import Graph  # Assuming this is a custom class for handling MS Graph API interactions
 from datetime import datetime
 from pytz import timezone
 import pytz
 import csv
+from tzlocal import get_localzone
 
 async def main():
     print('OneDrive-Version-Extractor\n')
 
-    # Load settings
+    # Load settings from configuration files
     config = configparser.ConfigParser()
     config.read(['config.cfg', 'config.dev.cfg'])
     azure_settings = config['azure']
 
+    # Initialize Graph object with Azure settings
     graph = Graph(azure_settings)
 
+    # Greet the user and get the token for API requests
     await greet_user(graph)
-
-    # Get the token once
     token = await graph.get_user_token()
 
     choice = -1
 
+    # Main menu loop
     while choice != 0:
         print('Please choose one of the following options:')
         print('0. Exit')
-        print('1. Display list files')
+        print('1. Display list of files')
         print('2. Display file versions')
         print('3. Download a file version')
-        print('4. Updates on OneDrive')
-        print('5. Restore a version')
+        print('4. Monitor updates on OneDrive')
+        print('5. Restore a file version')
 
         try:
-            choice = int(input())
+            choice = int(input())  # Take user input for menu choice
         except ValueError:
             choice = -1
 
         try:
+            # Handle user's choice using match-case (Python 3.10+ feature)
             match choice:
                 case 0:
-                    #Exit
                     print('Goodbye...')
                 case 1:
-                    #Display list files
                     await display_list_files(graph, token)
                 case 2:
-                    #Display file versions
-                    file_id = input('Enter the file ID of the file you want to see the versions (type cancel for exit): ')
+                    file_id = input('Enter the file ID to view its versions (type cancel to exit): ')
                     if file_id == "cancel":
                         continue
                     else:
                         await display_file_versions(graph, token, file_id)
                 case 3:
-                    #Download a file version
-                    file_id = input('Enter the file ID of the file you want to download (type cancel for exit): ')
+                    file_id = input('Enter the file ID to download (type cancel to exit): ')
                     if file_id == "cancel":
                         continue
                     else:
                         if not await validate_file_id(token, file_id):
                             print("Invalid file ID. Please try again.")
                         else:
-                            choice_2 = input('Do you want to download all the versions of the file? (yes/no/cancel for exit): ')
+                            choice_2 = input('Do you want to download all versions of the file? (yes/no/cancel to exit): ')
                             match choice_2:
                                 case "no":
-                                    version_id = input('Enter the version ID of the file you want to download (type cancel for exit): ')
+                                    version_id = input('Enter the version ID to download (type cancel to exit): ')
                                     if version_id == "cancel":
                                         continue
                                     else:
@@ -78,30 +77,28 @@ async def main():
                                             file_name = input('Enter the file name with extension: ')
                                             await download_file_version(token, file_id, version_id, save_directory, file_name)
                                 case "yes":
-                                    save_directory = input('Enter the directory path to save the file: ')
+                                    save_directory = input('Enter the directory path to save the files: ')
                                     await download_all_file_versions(token, file_id, save_directory)
                                 case "cancel":
                                     continue
                                 case _:
                                     print('Invalid choice!\n')
                 case 4:
-                    #Updates on OneDrive
                     await monitor_onedrive_activities(token)
                 case 5:
-                    #Restore a version
-                    file_id = input('Enter the file ID (type cancel for exit): ')
+                    file_id = input('Enter the file ID to restore (type cancel to exit): ')
                     if file_id == "cancel":
                         continue
                     else:
                         if not await validate_file_id(token, file_id):
                             print("Invalid file ID. Please try again.")
                         else:
-                            version_id = input('Enter the version ID of the file you wnat to restore (type cancel for exit): ')
+                            version_id = input('Enter the version ID to restore (type cancel to exit): ')
                             if version_id == "cancel":
                                 continue
                             else:
                                 if not await validate_version_id(token, file_id, version_id):
-                                            print("Invalid version ID. Please try again.")
+                                    print("Invalid version ID. Please try again.")
                                 else:
                                     await restore_file_version(graph, token, file_id, version_id)
                 case _:
@@ -111,14 +108,14 @@ async def main():
             if odata_error.error:
                 print(odata_error.error.code, odata_error.error.message)
 
-# Greet user
+# Greet user with their name and email
 async def greet_user(graph: Graph):
     user = await graph.get_user()
     if user:
         print('Hello,', user.display_name)
         print('Email:', user.mail or user.user_principal_name, '\n')
 
-# Helper function to print items in a hierarchical format
+# Recursive function to print items in a hierarchical structure
 async def print_items(token, items, level=0):
     headers = {
         'Authorization': f'Bearer {token}'
@@ -127,32 +124,32 @@ async def print_items(token, items, level=0):
     for item in items['value']:
         print(' ' * level * 4 + '- ' + f"[{item['id']}] {item['name']}")
         if 'folder' in item:
-            url = f'https://graph.microsoft.com/v1.0/me/drive/items/{item["id"]}/children'
+            url = f"https://graph.microsoft.com/v1.0/me/drive/items/{item['id']}/children"
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             sub_items = response.json()
             await print_items(token, sub_items, level + 1)
 
-# Display list files
+# Display a list of files and folders in OneDrive
 async def display_list_files(graph: Graph, token):
-    
     headers = {
         'Authorization': f'Bearer {token}'
     }
 
     try:
         response = requests.get('https://graph.microsoft.com/v1.0/me/drive/root/children', headers=headers)
-        response.raise_for_status()  # Verifica se la richiesta ha avuto successo o solleva un'eccezione
+        response.raise_for_status()
         root_items = response.json()
 
         await print_items(token, root_items)
 
     except requests.exceptions.HTTPError as err:
-        print(f'Errore HTTP: {err}')  # Gestione dell'errore HTTP
+        print(f'HTTP Error: {err}')
 
     except requests.exceptions.RequestException as err:
-        print(f'Errore di richiesta: {err}')  # Gestione di altri tipi di eccezioni di richiesta
+        print(f'Request Error: {err}')
 
+# Validate if a file ID exists in OneDrive
 async def validate_file_id(token, file_id):
     url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
     headers = {
@@ -162,6 +159,7 @@ async def validate_file_id(token, file_id):
     response = requests.get(url, headers=headers)
     return response.status_code == 200
 
+# Validate if a version ID exists for a given file in OneDrive
 async def validate_version_id(token, file_id, version_id):
     url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}'
     headers = {
@@ -171,6 +169,7 @@ async def validate_version_id(token, file_id, version_id):
     response = requests.get(url, headers=headers)
     return response.status_code == 200
 
+# Display versions of a file in OneDrive with option to export to CSV
 async def display_file_versions(graph: Graph, token, file_id):
     try:
         headers = {
@@ -182,19 +181,17 @@ async def display_file_versions(graph: Graph, token, file_id):
         response.raise_for_status()
         versions = response.json()
 
+        # Get local timezone of the device
+        local_tz = get_localzone()
+
         # Print file versions information to console
         for version in versions['value']:
-            # Convert lastModifiedDateTime to datetime object in UTC
             modified_time_str = version.get('lastModifiedDateTime', 'N/A')
-            modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Convert to datetime object
+            modified_time = datetime.fromisoformat(modified_time_str[:-1])
 
-            # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
-            tz = timezone('Europe/Rome')
-            modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
-
+            modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
             modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
-            # Print version information
             print(f"Version ID: {version['id']}")
             print(f"Last Modified: {modified_time_str_with_tz}")
             print(f"Size: {version['size']} bytes\n")
@@ -205,7 +202,6 @@ async def display_file_versions(graph: Graph, token, file_id):
             csv_filename = f"{file_id}_versions.csv"
             directory = input('Enter the directory path to save the CSV file: ')
 
-            # Create directory if it does not exist
             if not os.path.exists(directory):
                 os.makedirs(directory)
 
@@ -216,17 +212,12 @@ async def display_file_versions(graph: Graph, token, file_id):
                 writer.writerow(['Version ID', 'Last Modified', 'Size'])
 
                 for version in versions['value']:
-                    # Convert lastModifiedDateTime to datetime object in UTC
                     modified_time_str = version.get('lastModifiedDateTime', 'N/A')
-                    modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Convert to datetime object
+                    modified_time = datetime.fromisoformat(modified_time_str[:-1])
 
-                    # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
-                    tz = timezone('Europe/Rome')
-                    modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
-
+                    modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
                     modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
-                    # Write version information to CSV
                     writer.writerow([version['id'], modified_time_str_with_tz, version['size']])
 
             print(f"File {csv_path} containing versions metadata exported successfully.")
@@ -236,16 +227,17 @@ async def display_file_versions(graph: Graph, token, file_id):
             print("Invalid choice. Not exporting to CSV.")
 
     except requests.exceptions.HTTPError as e:
-        print(f"Make sure you have entered a valid File ID {e}")
+        print(f"HTTP Error: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+# Download a specific version of a file from OneDrive
 async def download_file_version(token, file_id, version_id, save_directory, file_name):
     try:
         headers = {
             'Authorization': f'Bearer {token}'
         }
-        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content'
 
         response = requests.get(url, headers=headers, allow_redirects=True)
         response.raise_for_status()
@@ -268,6 +260,7 @@ async def download_file_version(token, file_id, version_id, save_directory, file
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+# Download all versions of a file from OneDrive
 async def download_all_file_versions(token, file_id, save_directory):
     try:
         headers = {
@@ -309,7 +302,7 @@ async def download_all_file_versions(token, file_id, save_directory):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-# Funzione asincrona per monitorare le attività su OneDrive
+# Monitor activities and changes in OneDrive
 async def monitor_onedrive_activities(token):
     url_delta = 'https://graph.microsoft.com/v1.0/me/drive/root/delta'
     headers = {
@@ -318,10 +311,11 @@ async def monitor_onedrive_activities(token):
     }
 
     try:
-        # Monitorare le modifiche su OneDrive
         response_delta = requests.get(url_delta, headers=headers)
         response_delta.raise_for_status()
         changes = response_delta.json()
+
+        local_tz = get_localzone()
 
         print("Changes in OneDrive:")
         print("=" * 171)
@@ -332,12 +326,9 @@ async def monitor_onedrive_activities(token):
             filename = item.get('name', 'N/A')
             file_id = item.get('id', 'N/A')
             modified_time_str = item.get('lastModifiedDateTime', 'N/A')
-            modified_time = datetime.fromisoformat(modified_time_str[:-1])  # Converti in oggetto datetime
+            modified_time = datetime.fromisoformat(modified_time_str[:-1])
 
-            # Specifica il fuso orario desiderato (ad esempio, Europe/Rome per il fuso orario italiano)
-            tz = timezone('Europe/Rome')
-            modified_time_localized = pytz.utc.localize(modified_time).astimezone(tz)
-
+            modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
             modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
             modified_by = item.get('lastModifiedBy', {}).get('user', {}).get('displayName', 'N/A')
@@ -347,10 +338,11 @@ async def monitor_onedrive_activities(token):
         print("=" * 171)
 
     except requests.exceptions.HTTPError as err:
-        print(f"HTTP error occurred: {err}")
+        print(f"HTTP Error: {err}")
     except Exception as err:
         print(f"An error occurred: {err}")
 
+# Restore a specific version of a file in OneDrive
 async def restore_file_version(graph: Graph, token, file_id, version_id):
     try:
         headers = {
@@ -365,11 +357,11 @@ async def restore_file_version(graph: Graph, token, file_id, version_id):
         print(f"Version {version_id} of file {file_id} restored successfully.")
     
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error occurred: {e}")
+        print(f"HTTP Error: {e}")
     except requests.exceptions.RequestException as e:
-        print(f"Request Exception occurred: {e}")
+        print(f"Request Exception: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
-# Run main
+# Entry point to run the main function
 asyncio.run(main())
