@@ -1,112 +1,18 @@
 import asyncio
-import requests
 import configparser
+import tkinter as tk
+from tkinter import simpledialog, messagebox, filedialog
 import os
-import pytz
+import webbrowser
+import requests
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
-from graph import Graph
+from graph import Graph  
 from datetime import datetime
-from dateutil.parser import parse
-from tzlocal import get_localzone
+from pytz import timezone
+import pytz
 import csv
-
-async def main():
-    print('OneDrive-Version-Extractor\n')
-
-    # Load settings from configuration files
-    config = configparser.ConfigParser()
-    config.read(['config.cfg', 'config.dev.cfg'])
-    azure_settings = config['azure']
-
-    # Initialize Graph object with Azure settings
-    graph = Graph(azure_settings)
-
-    # Greet the user and get the token for API requests
-    await greet_user(graph)
-    token = await graph.get_user_token()
-
-    choice = -1
-
-    # Main menu loop
-    while choice != 0:
-        print('Please choose one of the following options:')
-        print('0. Exit')
-        print('1. Display list of files')
-        print('2. Display file versions')
-        print('3. Download a file version')
-        print('4. Monitor updates on OneDrive')
-        print('5. Restore a file version')
-
-        try:
-            choice = int(input())  # Take user input for menu choice
-        except ValueError:
-            choice = -1
-
-        try:
-            # Handle user's choice using match-case (Python 3.10+ feature)
-            match choice:
-                case 0:
-                    print('Goodbye...')
-                case 1:
-                    await display_list_files(graph, token)
-                case 2:
-                    file_id = input('Enter the file ID to view its versions (type cancel to exit): ')
-                    if file_id == "cancel":
-                        continue
-                    else:
-                        await display_file_versions(graph, token, file_id)
-                case 3:
-                    file_id = input('Enter the file ID to download (type cancel to exit): ')
-                    if file_id == "cancel":
-                        continue
-                    else:
-                        if not await validate_file_id(token, file_id):
-                            print("Invalid file ID. Please try again.")
-                        else:
-                            choice_2 = input('Do you want to download all versions of the file? (yes/no/cancel to exit): ')
-                            match choice_2:
-                                case "no":
-                                    version_id = input('Enter the version ID to download (type cancel to exit): ')
-                                    if version_id == "cancel":
-                                        continue
-                                    else:
-                                        if not await validate_version_id(token, file_id, version_id):
-                                            print("Invalid version ID. Please try again.")
-                                        else:
-                                            save_directory = input('Enter the directory path to save the file: ')
-                                            file_name = input('Enter the file name with extension: ')
-                                            await download_file_version(token, file_id, version_id, save_directory, file_name)
-                                case "yes":
-                                    save_directory = input('Enter the directory path to save the files: ')
-                                    await download_all_file_versions(token, file_id, save_directory)
-                                case "cancel":
-                                    continue
-                                case _:
-                                    print('Invalid choice!\n')
-                case 4:
-                    await monitor_onedrive_activities(token)
-                case 5:
-                    file_id = input('Enter the file ID to restore (type cancel to exit): ')
-                    if file_id == "cancel":
-                        continue
-                    else:
-                        if not await validate_file_id(token, file_id):
-                            print("Invalid file ID. Please try again.")
-                        else:
-                            version_id = input('Enter the version ID to restore (type cancel to exit): ')
-                            if version_id == "cancel":
-                                continue
-                            else:
-                                if not await validate_version_id(token, file_id, version_id):
-                                    print("Invalid version ID. Please try again.")
-                                else:
-                                    await restore_file_version(graph, token, file_id, version_id)
-                case _:
-                    print('Invalid choice!\n')
-        except ODataError as odata_error:
-            print('Error:')
-            if odata_error.error:
-                print(odata_error.error.code, odata_error.error.message)
+from tzlocal import get_localzone
+from dateutil.parser import parse
 
 # Greet user with their name and email
 async def greet_user(graph: Graph):
@@ -116,7 +22,7 @@ async def greet_user(graph: Graph):
         print('Email:', user.mail or user.user_principal_name, '\n')
 
 # Recursive function to print items in a hierarchical structure
-async def print_items(token, items, level=0):
+def print_items(token, items, level=0):
     headers = {
         'Authorization': f'Bearer {token}'
     }
@@ -128,10 +34,10 @@ async def print_items(token, items, level=0):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             sub_items = response.json()
-            await print_items(token, sub_items, level + 1)
+            print_items(token, sub_items, level + 1)
 
 # Display a list of files and folders in OneDrive
-async def display_list_files(graph: Graph, token):
+def display_list_files(graph: Graph, token):
     headers = {
         'Authorization': f'Bearer {token}'
     }
@@ -141,7 +47,7 @@ async def display_list_files(graph: Graph, token):
         response.raise_for_status()
         root_items = response.json()
 
-        await print_items(token, root_items)
+        print_items(token, root_items)
 
     except requests.exceptions.HTTPError as err:
         print(f'HTTP Error: {err}')
@@ -150,7 +56,7 @@ async def display_list_files(graph: Graph, token):
         print(f'Request Error: {err}')
 
 # Validate if a file ID exists in OneDrive
-async def validate_file_id(token, file_id):
+def validate_file_id(token, file_id):
     url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
     headers = {
         'Authorization': f'Bearer {token}',
@@ -160,7 +66,7 @@ async def validate_file_id(token, file_id):
     return response.status_code == 200
 
 # Validate if a version ID exists for a given file in OneDrive
-async def validate_version_id(token, file_id, version_id):
+def validate_version_id(token, file_id, version_id):
     url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}'
     headers = {
         'Authorization': f'Bearer {token}',
@@ -170,7 +76,7 @@ async def validate_version_id(token, file_id, version_id):
     return response.status_code == 200
 
 # Display versions of a file in OneDrive with option to export to CSV
-async def display_file_versions(graph: Graph, token, file_id):
+def display_file_versions(graph: Graph, token, file_id):
     try:
         headers = {
             'Authorization': f'Bearer {token}'
@@ -236,7 +142,7 @@ async def display_file_versions(graph: Graph, token, file_id):
         print(f"An unexpected error occurred: {e}")
 
 # Download a specific version of a file from OneDrive
-async def download_file_version(token, file_id, version_id, save_directory, file_name):
+def download_file_version(token, file_id, version_id, save_directory, file_name):
     try:
         headers = {
             'Authorization': f'Bearer {token}'
@@ -265,7 +171,7 @@ async def download_file_version(token, file_id, version_id, save_directory, file
         print(f"An unexpected error occurred: {e}")
 
 # Download all versions of a file from OneDrive
-async def download_all_file_versions(token, file_id, save_directory):
+def download_all_file_versions(token, file_id, save_directory):
     try:
         headers = {
             'Authorization': f'Bearer {token}'
@@ -295,7 +201,7 @@ async def download_all_file_versions(token, file_id, save_directory):
         for version in versions['value']:
             version_id = version['id']
             file_name = f"{os.path.splitext(original_name)[0]}_{version_id}{original_extension}"
-            await download_file_version(token, file_id, version_id, save_directory, file_name)
+            download_file_version(token, file_id, version_id, save_directory, file_name)
 
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error occurred: {e}")
@@ -307,7 +213,7 @@ async def download_all_file_versions(token, file_id, save_directory):
         print(f"An unexpected error occurred: {e}")
 
 # Monitor activities and changes in OneDrive
-async def monitor_onedrive_activities(token):
+def monitor_onedrive_activities(token):
     url_delta = 'https://graph.microsoft.com/v1.0/me/drive/root/delta'
     headers = {
         'Authorization': f'Bearer {token}',
@@ -352,9 +258,8 @@ async def monitor_onedrive_activities(token):
     except Exception as err:
         print(f"An error occurred: {err}")
 
-
 # Restore a specific version of a file in OneDrive
-async def restore_file_version(graph: Graph, token, file_id, version_id):
+def restore_file_version(graph: Graph, token, file_id, version_id):
     try:
         headers = {
             'Authorization': f'Bearer {token}',
@@ -374,6 +279,83 @@ async def restore_file_version(graph: Graph, token, file_id, version_id):
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+async def main():
+    print('OneDrive-Version-Extractor\n')
+
+    # Load settings from configuration files
+    config = configparser.ConfigParser()
+    config.read(['config.cfg', 'config.dev.cfg'])
+    azure_settings = config['azure']
+
+    # Initialize Graph object with Azure settings
+    graph = Graph(azure_settings)
+
+    # Open a web page in the browser
+    webbrowser.open('https://microsoft.com/devicelogin')
+
+    # Greet the user and get the token for API requests
+    await greet_user(graph)
+    token = await graph.get_user_token()
+
+    # Initialize the Tkinter root window
+    root = tk.Tk()
+    root.title("OneDrive Management")
+    root.geometry("500x500")
+
+    # Create a Text widget to display output
+    output_text = tk.Text(root, width=80, height=20)
+    output_text.pack()
+
+    # Function to close the program
+    def exit_program():
+        root.destroy()
+
+    # Function to display list of files
+    def display_list_files_wrapper():
+        display_list_files(graph, token)
+
+    # Function to display file versions
+    def display_file_versions_wrapper():
+        file_id = simpledialog.askstring("File ID", "Enter File ID:")
+        display_file_versions(graph, token, file_id)
+
+    # Function to download file version
+    def download_file_version_wrapper():
+        file_id = simpledialog.askstring("File ID", "Enter File ID:")
+        version_id = simpledialog.askstring("Version ID", "Enter Version ID:")
+        save_directory = filedialog.askdirectory()
+        download_file_version(token, file_id, version_id, save_directory, f"{file_id}_{version_id}.txt")
+
+    # Function to monitor OneDrive activities
+    def monitor_onedrive_activities_wrapper():
+        monitor_onedrive_activities(token)
+
+    # Function to restore file version
+    def restore_file_version_wrapper():
+        file_id = simpledialog.askstring("File ID", "Enter File ID:")
+        version_id = simpledialog.askstring("Version ID", "Enter Version ID:")
+        restore_file_version(graph, token, file_id, version_id)
+
+    # Create buttons for each function
+    button_exit = tk.Button(root, text="Exit", command=exit_program)
+    button_exit.pack()
+
+    button_display_list_files = tk.Button(root, text="Display List Files", command=display_list_files_wrapper)
+    button_display_list_files.pack()
+
+    button_display_file_versions = tk.Button(root, text="Display File Versions", command=display_file_versions_wrapper)
+    button_display_file_versions.pack()
+
+    button_download_file_version = tk.Button(root, text="Download File Version", command=download_file_version_wrapper)
+    button_download_file_version.pack()
+
+    button_monitor_onedrive_activities = tk.Button(root, text="Monitor OneDrive Activities", command=monitor_onedrive_activities_wrapper)
+    button_monitor_onedrive_activities.pack()
+
+    button_restore_file_version = tk.Button(root, text="Restore File Version", command=restore_file_version_wrapper)
+    button_restore_file_version.pack()
+
+    root.mainloop()
+
 # Entry point to run the main function
 asyncio.run(main())
-
