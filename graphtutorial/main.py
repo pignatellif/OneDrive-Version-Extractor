@@ -211,26 +211,25 @@ async def display_file_versions(graph: Graph, token, file_id):
                 os.makedirs(directory)
 
             csv_path = os.path.join(directory, csv_filename)
-
             with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
                 writer = csv.writer(csv_file)
-                writer.writerow(['Version ID', 'Last Modified', 'Size'])
+                writer.writerow(['Version ID', 'Download URL', 'Last Modified', 'Size', 'Last Modified By'])
 
                 for version in versions['value']:
+                    version_id = version.get('id', 'N/A')
+                    download_url = version.get('@microsoft.graph.downloadUrl', 'N/A')
                     modified_time_str = version.get('lastModifiedDateTime', 'N/A')
-                    modified_time = parse(modified_time_str)
+                    modified_time = parse(modified_time_str).strftime('%Y-%m-%d %H:%M:%S %Z') if modified_time_str != 'N/A' else 'N/A'
+                    file_size = str(version.get('size', 'N/A')) + "bytes"
+                    last_modified_by = version.get('lastModifiedBy', {}).get('user', {}).get('displayName', 'N/A')
 
-                    modified_time_localized = modified_time.astimezone(local_tz)
-                    modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
-
-                    writer.writerow([version['id'], modified_time_str_with_tz, version['size']])
+                    writer.writerow([version_id, download_url, modified_time, file_size, last_modified_by])
 
             print(f"File {csv_path} containing versions metadata exported successfully.")
         elif export_csv.lower() == 'no':
             print("Not exporting to CSV.")
         else:
             print("Invalid choice. Not exporting to CSV.")
-
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error: {e}")
     except Exception as e:
