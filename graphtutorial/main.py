@@ -2,13 +2,13 @@ import asyncio
 import requests
 import configparser
 import os
-from msgraph.generated.models.o_data_errors.o_data_error import ODataError
-from graph import Graph  # Assuming this is a custom class for handling MS Graph API interactions
-from datetime import datetime
-from pytz import timezone
 import pytz
-import csv
+from msgraph.generated.models.o_data_errors.o_data_error import ODataError
+from graph import Graph
+from datetime import datetime
+from dateutil.parser import parse
 from tzlocal import get_localzone
+import csv
 
 async def main():
     print('OneDrive-Version-Extractor\n')
@@ -187,9 +187,14 @@ async def display_file_versions(graph: Graph, token, file_id):
         # Print file versions information to console
         for version in versions['value']:
             modified_time_str = version.get('lastModifiedDateTime', 'N/A')
-            modified_time = datetime.fromisoformat(modified_time_str[:-1])
+            try:
+                modified_time = parse(modified_time_str)
+            except ValueError as e:
+                print(f"Errore nel parsing della data: {e}")
+                continue
 
-            modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
+            # Directly convert the datetime object to the local timezone
+            modified_time_localized = modified_time.astimezone(local_tz)
             modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
             print(f"Version ID: {version['id']}")
@@ -213,9 +218,9 @@ async def display_file_versions(graph: Graph, token, file_id):
 
                 for version in versions['value']:
                     modified_time_str = version.get('lastModifiedDateTime', 'N/A')
-                    modified_time = datetime.fromisoformat(modified_time_str[:-1])
+                    modified_time = parse(modified_time_str)
 
-                    modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
+                    modified_time_localized = modified_time.astimezone(local_tz)
                     modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
                     writer.writerow([version['id'], modified_time_str_with_tz, version['size']])
@@ -237,7 +242,7 @@ async def download_file_version(token, file_id, version_id, save_directory, file
         headers = {
             'Authorization': f'Bearer {token}'
         }
-        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/content'
+        url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
 
         response = requests.get(url, headers=headers, allow_redirects=True)
         response.raise_for_status()
@@ -252,7 +257,7 @@ async def download_file_version(token, file_id, version_id, save_directory, file
             file.write(response.content)
 
         print(f"File version downloaded successfully as {save_path}")
-    
+
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error occurred: {e}")
     except requests.exceptions.RequestException as e:
@@ -326,9 +331,15 @@ async def monitor_onedrive_activities(token):
             filename = item.get('name', 'N/A')
             file_id = item.get('id', 'N/A')
             modified_time_str = item.get('lastModifiedDateTime', 'N/A')
-            modified_time = datetime.fromisoformat(modified_time_str[:-1])
+            
+            try:
+                modified_time = parse(modified_time_str)
+            except ValueError as e:
+                print(f"Errore nel parsing della data: {e}")
+                continue
 
-            modified_time_localized = pytz.utc.localize(modified_time).astimezone(local_tz)
+            # Directly convert the datetime object to the local timezone
+            modified_time_localized = modified_time.astimezone(local_tz)
             modified_time_str_with_tz = modified_time_localized.strftime('%Y-%m-%d %H:%M:%S %Z')
 
             modified_by = item.get('lastModifiedBy', {}).get('user', {}).get('displayName', 'N/A')
@@ -341,6 +352,7 @@ async def monitor_onedrive_activities(token):
         print(f"HTTP Error: {err}")
     except Exception as err:
         print(f"An error occurred: {err}")
+
 
 # Restore a specific version of a file in OneDrive
 async def restore_file_version(graph: Graph, token, file_id, version_id):
@@ -355,7 +367,7 @@ async def restore_file_version(graph: Graph, token, file_id, version_id):
         response.raise_for_status()
 
         print(f"Version {version_id} of file {file_id} restored successfully.")
-    
+
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error: {e}")
     except requests.exceptions.RequestException as e:
@@ -365,3 +377,4 @@ async def restore_file_version(graph: Graph, token, file_id, version_id):
 
 # Entry point to run the main function
 asyncio.run(main())
+
