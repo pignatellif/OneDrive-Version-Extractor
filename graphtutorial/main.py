@@ -5,7 +5,6 @@ from tkinter import simpledialog, messagebox, filedialog
 import os
 import webbrowser
 import requests
-from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph import Graph  
 from datetime import datetime
 from pytz import timezone
@@ -120,6 +119,10 @@ def display_file_versions(graph: Graph, token, file_id, output_text):
             csv_filename = f"{file_id}_versions.csv"
             directory = filedialog.askdirectory()
 
+            if directory is None or directory == '':
+                output_text.insert(tk.END, "Canceled\n")
+                return
+
             if not os.path.exists(directory):
                 os.makedirs(directory)
 
@@ -148,50 +151,62 @@ def display_file_versions(graph: Graph, token, file_id, output_text):
     except Exception as e:
         output_text.insert(tk.END, f"An unexpected error occurred: {e}\n")
 
-# Download a specific version of a file from OneDrive
-def download_file_version(token, file_id, version_id, save_directory, file_name):
+def download_file_version(token, file_id, version_id, save_directory, output_text):
     try:
+        if save_directory is None or save_directory == '':
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         headers = {
             'Authorization': f'Bearer {token}'
         }
         url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
 
-        response = requests.get(url, headers=headers, allow_redirects=True)
-        response.raise_for_status()
+        # Get the original file name and extension
+        url_item = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
+        response_item = requests.get(url_item, headers=headers)
+        response_item.raise_for_status()
+        item = response_item.json()
+        original_name = item['name']
+        original_extension = os.path.splitext(original_name)[1]
 
         # Create directory if it does not exist
-        if save_directory and not os.path.exists(save_directory):
+        if not os.path.exists(save_directory):
             os.makedirs(save_directory)
 
+        # Construct the file name with version id
+        file_name = f"{os.path.splitext(original_name)[0]}_{version_id}{original_extension}"
         save_path = os.path.join(save_directory, file_name)
+
+        response = requests.get(url, headers=headers, allow_redirects=True)
+        response.raise_for_status()
 
         with open(save_path, 'wb') as file:
             file.write(response.content)
 
-        print(f"File version downloaded successfully as {save_path}")
+        output_text.insert(tk.END, f"File version downloaded successfully as {save_path}\n")
 
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error occurred: {e}")
+        output_text.insert(tk.END, f"HTTP Error occurred: {e}\n")
     except requests.exceptions.RequestException as e:
-        print(f"Request Exception occurred: {e}")
+        output_text.insert(tk.END, f"Request Exception occurred: {e}\n")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        output_text.insert(tk.END, f"An unexpected error occurred: {e}\n")
 
 # Download all versions of a file from OneDrive
-def download_all_file_versions(token, file_id, save_directory):
+def download_all_file_versions(token, file_id, save_directory, output_text):
     try:
+        if save_directory is None or save_directory == '':
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         headers = {
             'Authorization': f'Bearer {token}'
         }
         url_versions = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions'
-
         response_versions = requests.get(url_versions, headers=headers)
         response_versions.raise_for_status()
         versions = response_versions.json()
-
-        if not versions['value']:
-            print("No versions found for this file.")
-            return
 
         # Get the original file name and extension
         url_item = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}'
@@ -207,21 +222,25 @@ def download_all_file_versions(token, file_id, save_directory):
 
         for version in versions['value']:
             version_id = version['id']
+            url = f'https://graph.microsoft.com/v1.0/me/drive/items/{file_id}/versions/{version_id}/content'
             file_name = f"{os.path.splitext(original_name)[0]}_{version_id}{original_extension}"
-            download_file_version(token, file_id, version_id, save_directory, file_name)
+            save_path = os.path.join(save_directory, file_name)
 
+            response = requests.get(url, headers=headers, allow_redirects=True)
+            response.raise_for_status()
+
+            with open(save_path, 'wb') as file:
+                file.write(response.content)
+
+            output_text.insert(tk.END, f"Downloaded version {version_id} as {save_path}\n")
     except requests.exceptions.HTTPError as e:
-        print(f"HTTP Error occurred: {e}")
+        output_text.insert(tk.END, f"HTTP Error occurred: {e}\n")
     except requests.exceptions.RequestException as e:
-        print(f"Request Exception occurred: {e}")
+        output_text.insert(tk.END, f"Request Exception occurred: {e}\n")
     except ValueError as e:
-        print(f"Value Error: {e}")
+        output_text.insert(tk.END, f"Value Error: {e}\n")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-
-#voglio unire queste due funzioni facendo in modo che se viene specificata la versione mi scarica solo quella
-#se viene inserito 'all' quando viene chiesta la versione mi scarica tutte le versioni
-#e i file che vengono scaricati in entrambi i casi devono tutti avere il nome originale del file + la versione + l'estensione originale
+        output_text.insert(tk.END, f"An unexpected error occurred: {e}\n")
 
 # Monitor activities and changes in OneDrive
 def monitor_onedrive_activities(token, output_text):
@@ -310,10 +329,10 @@ async def main():
     # Initialize the Tkinter root window
     root = tk.Tk()
     root.title("OneDrive Management")
-    root.geometry("1050x600")  
+    root.geometry("1550x700")  
 
     # Create a Text widget to display output with increased width and use a fixed-width font
-    output_text = tk.Text(root, width=171, height=20, font=('Courier', 10))
+    output_text = tk.Text(root, width=256, height=30, font=('Courier', 15))
     output_text.pack()
 
     # Function to close the program
@@ -331,14 +350,32 @@ async def main():
     # Function to display file versions
     def display_file_versions_wrapper():
         file_id = simpledialog.askstring("File ID", "Enter File ID:")
-        display_file_versions(graph, token, file_id, output_text)
+        if file_id is None:
+            output_text.insert(tk.END, "Canceled\n")
+        else:
+            display_file_versions(graph, token, file_id, output_text)
 
     # Function to download file version
     def download_file_version_wrapper():
         file_id = simpledialog.askstring("File ID", "Enter File ID:")
+        if file_id is None:
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         version_id = simpledialog.askstring("Version ID", "Enter Version ID:")
+        if version_id is None:
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         save_directory = filedialog.askdirectory()
-        download_file_version(token, file_id, save_directory, output_text, version_id)
+        if save_directory is None or save_directory == '':
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
+        if version_id == 'all':
+            download_all_file_versions(token, file_id, save_directory, output_text)
+        else:
+            download_file_version(token, file_id, version_id, save_directory, output_text)
 
     # Function to monitor OneDrive activities
     def monitor_onedrive_activities_wrapper():
@@ -347,7 +384,15 @@ async def main():
     # Function to restore file version
     def restore_file_version_wrapper():
         file_id = simpledialog.askstring("File ID", "Enter File ID:")
+        if file_id is None:
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         version_id = simpledialog.askstring("Version ID", "Enter Version ID:")
+        if version_id is None:
+            output_text.insert(tk.END, "Canceled\n")
+            return
+
         restore_file_version(graph, token, file_id, version_id, output_text)
 
     # Create buttons for each function
