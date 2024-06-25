@@ -17,3 +17,16 @@ In your command-line interface (CLI), navigate to the project directory and run 
 python3 -m pip install -r requirements.txt
 python3 main.py
 ```
+
+## Features to be Implemented
+
+1. **Server Timezone Utilization**
+   - Adjust the display of activities to use the server's timezone.
+
+2. **Multilingual Support**
+   - Addition of support for multiple languages to make the project accessible globally.
+   - Implementation of an integrated translation system in the user interface.
+
+3. **Testing and Maintenance**
+   - Development of automated test suites to ensure code stability.
+   - Scheduling regular maintenance and update sessions.
